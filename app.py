@@ -4,7 +4,8 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-
+import qrcode
+from io import BytesIO
 import streamlit as st
 
 APP_DIR = Path(__file__).parent
@@ -14,9 +15,9 @@ STORAGE_DIR.mkdir(exist_ok=True)
 
 DURATIONS = {
     "1 hour": timedelta(hours=1),
-    "1 day": timedelta(days=1),
-    "1 week": timedelta(weeks=1),
-    "Never expire": None,
+    "8 hours": timedelta(hours=8),
+    "24 hours": timedelta(hours=24),
+
 }
 
 MAX_FILE_MB = 50
@@ -203,19 +204,24 @@ def human_size(size):
     return f"{value:.1f} GB"
 
 
-st.set_page_config(
-    page_title="Temporary File Sharing",
-    page_icon="📁",
+st.markdown(
+    "<h2 style='text-align:center;'>🕷️ SpiderVault</h2>"
+    "<p style='text-align:center; font-size:14px;'>Simple. Safe. Secure.</p>",
+    unsafe_allow_html=True
 )
 
 init_db()
 cleanup_expired_files()
 
-st.title("📁 Temporary File Sharing")
 
-st.write(
-    "Upload a file, choose its expiry and password settings, "
-    "and share the download link."
+st.markdown(
+    """
+    <p style="text-align: center; font-size: 14px;">
+        Upload a file, choose its expiry and password settings,<br>
+        and share the download link.
+    </p>
+    """,
+    unsafe_allow_html=True
 )
 
 params = st.query_params
@@ -367,17 +373,48 @@ if uploaded_file is not None:
             )
 
             # Build the link using the current app URL.
+            # Build the link using the current app URL.
             base_url = st.context.url.split("?")[0]
             share_url = f"{base_url}?token={token}"
 
             st.success("File uploaded successfully!")
 
-            st.write("**Share this download link:**")
+            # Display the shareable URL
+            st.subheader("Your Shareable Link")
             st.code(share_url)
 
-            st.link_button(
-                "Open download page",
-                share_url,
+            st.link_button("Open download page", share_url)
+
+            # Generate the QR code from the same URL
+            qr = qrcode.QRCode(
+                version=None,
+                error_correction=qrcode.constants.ERROR_CORRECT_M,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(share_url)
+            qr.make(fit=True)
+
+            qr_image = qr.make_image(
+                fill_color="black",
+                back_color="white",
+            )
+
+            # Convert QR code to PNG bytes
+            qr_buffer = BytesIO()
+            qr_image.save(qr_buffer, format="PNG")
+            qr_bytes = qr_buffer.getvalue()
+
+            # Display the QR code
+            st.subheader("Scan QR Code to Open Link")
+            st.image(qr_bytes, width=250)
+
+            # Allow the user to save the QR code
+            st.download_button(
+                label="Download QR Code",
+                data=qr_bytes,
+                file_name="file_sharing_qr.png",
+                mime="image/png",
             )
 
             if expires_at:
@@ -401,11 +438,7 @@ if uploaded_file is not None:
                     "Anyone with the valid link can download this file."
                 )
 
-            st.warning(
-                "This prototype stores files on the server's local disk. "
-                "For reliable public hosting, use persistent storage such "
-                "as S3, scheduled cleanup, quotas, and abuse protection."
-            )
+
 
         except Exception:
             st.error(
