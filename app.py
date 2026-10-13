@@ -7,6 +7,7 @@ from pathlib import Path
 import qrcode
 from io import BytesIO
 import streamlit as st
+import requests
 
 APP_DIR = Path(__file__).parent
 STORAGE_DIR = APP_DIR / "uploaded_files"
@@ -31,6 +32,31 @@ def connect_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+
+def get_ip_location():
+    """Get the public IP and approximate location of the visitor."""
+    try:
+        response = requests.get(
+            "https://ipapi.co/json/",
+            timeout=5,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("error"):
+            return None
+
+        return {
+            "ip": data.get("ip", "Unavailable"),
+            "city": data.get("city", "Unavailable"),
+            "region": data.get("region", "Unavailable"),
+            "country": data.get("country_name", "Unavailable"),
+        }
+
+    except (requests.RequestException, ValueError):
+        return None
 
 
 def init_db():
@@ -223,6 +249,30 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
+
+st.subheader("🌐 Visitor Information")
+
+location = get_ip_location()
+
+if location:
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric("Public IP Address", location["ip"])
+        st.write(f"**City:** {location['city']}")
+
+    with col2:
+        st.write(f"**State / Region:** {location['region']}")
+        st.write(f"**Country:** {location['country']}")
+
+    st.caption(
+        "Location is approximate and based on public IP geolocation. "
+        "A VPN or proxy may affect the result."
+    )
+else:
+    st.info("Visitor IP and location are currently unavailable.")
+
 
 params = st.query_params
 download_token = params.get("token")
